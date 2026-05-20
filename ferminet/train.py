@@ -739,40 +739,32 @@ def train(cfg: ml_collections.ConfigDict, writer_manager=None):
       steps=cfg.mcmc.steps,
       atoms=atoms_to_mcmc,
       blocks=cfg.mcmc.blocks * num_states,
+      ndim=cfg.system.ndim,
   )
+  
   # Construct loss and optimizer
-  laplacian_method = cfg.optim.get('laplacian', 'default')
-  pp_symbols = cfg.system.get('pp', {'symbols': None}).get('symbols')
   if cfg.system.make_local_energy_fn:
     local_energy_module, local_energy_fn = (
         cfg.system.make_local_energy_fn.rsplit('.', maxsplit=1))
     local_energy_module = importlib.import_module(local_energy_module)
     make_local_energy = getattr(local_energy_module, local_energy_fn)  # type: hamiltonian.MakeLocalEnergy
-    local_energy_fn = make_local_energy(
-        f=signed_network,
-        charges=charges,
-        nspins=nspins,
-        use_scan=False,
-        complex_output=use_complex,
-        laplacian_method=laplacian_method,
-        states=cfg.system.get('states', 0),
-        state_specific=(cfg.optim.objective == 'vmc_overlap'),
-        pp_type=cfg.system.get('pp', {'type': 'ccecp'}).get('type'),
-        pp_symbols=pp_symbols if cfg.system.get('use_pp') else None,
-        **cfg.system.make_local_energy_kwargs,
-    )
   else:
-    local_energy_fn = hamiltonian.local_energy(
-        f=signed_network,
-        charges=charges,
-        nspins=nspins,
-        use_scan=False,
-        complex_output=use_complex,
-        laplacian_method=laplacian_method,
-        states=cfg.system.get('states', 0),
-        state_specific=(cfg.optim.objective == 'vmc_overlap'),
-        pp_type=cfg.system.get('pp', {'type': 'ccecp'}).get('type'),
-        pp_symbols=pp_symbols if cfg.system.get('use_pp') else None)
+    make_local_energy = hamiltonian.local_energy
+  laplacian_method = cfg.optim.get('laplacian', 'default')
+  pp_symbols = cfg.system.get('pp', {'symbols': None}).get('symbols')
+  local_energy_fn = make_local_energy(
+      f=signed_network,
+      charges=charges,
+      nspins=nspins,
+      use_scan=False,
+      ndim=cfg.system.ndim,
+      complex_output=use_complex,
+      laplacian_method=laplacian_method,
+      states=cfg.system.get('states', 0),
+      state_specific=(cfg.optim.objective == 'vmc_overlap'),
+      pp_type=cfg.system.get('pp', {'type': 'ccecp'}).get('type'),
+      pp_symbols=pp_symbols if cfg.system.get('use_pp') else None,
+      **cfg.system.make_local_energy_kwargs)
 
   if cfg.optim.get('spin_energy', 0.0) > 0.0:
     # Minimize <H + c * S^2> instead of just <H>
