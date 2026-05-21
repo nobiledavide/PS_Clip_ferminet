@@ -321,6 +321,7 @@ def local_energy(
     charges: jnp.ndarray,
     nspins: Sequence[int],
     use_scan: bool = False,
+    ndim: int = 3,
     complex_output: bool = False,
     laplacian_method: str = 'default',
     states: int = 0,
@@ -336,14 +337,15 @@ def local_energy(
     charges: Shape (natoms). Nuclear charges of the atoms.
     nspins: Number of particles of each spin.
     use_scan: Whether to use a `lax.scan` for computing the laplacian.
+    ndim: Number of dimensions.
     complex_output: If true, the output of f is complex-valued.
-    laplacian_method: Laplacian calculation method. One of:
-      'default': take jvp(grad), looping over inputs
-      'folx': use Microsoft's implementation of forward laplacian
+    laplacian_method: Laplacian calculation method. One of: 'default': take
+      jvp(grad), looping over inputs 'folx': use Microsoft's implementation of
+      forward laplacian
     states: Number of excited states to compute. If 0, compute ground state with
       default machinery. If 1, compute ground state with excited state machinery
-    state_specific: Only used for excited states (states > 0). If true, then
-      the local energy is computed separately for each output from the network,
+    state_specific: Only used for excited states (states > 0). If true, then the
+      local energy is computed separately for each output from the network,
       instead of the local energy matrix being computed.
     pp_type: type of pseudopotential to use. Only used if ecp_symbols is
       provided.
@@ -360,7 +362,7 @@ def local_energy(
   if not pp_symbols:
     effective_charges = charges
     use_pp = False
-  else:
+  elif ndim == 3:
     effective_charges, pp_local, pp_nonlocal = pp.make_pp_potential(
         charges=charges,
         symbols=pp_symbols,
@@ -369,6 +371,8 @@ def local_energy(
         complex_output=complex_output
     )
     use_pp = not jnp.all(effective_charges == charges)
+  else:
+    raise NotImplementedError('Pseudopotentials only implemented for 3D')
 
   if not use_pp:
     pp_local = lambda *args, **kwargs: 0.0
@@ -386,9 +390,11 @@ def local_energy(
     """
     if states:
       # Compute features
-      vmap_features = jax.vmap(networks.construct_input_features, (0, None))
+      vmap_features = jax.vmap(
+          networks.construct_input_features, (0, None, None)
+      )
       positions = jnp.reshape(data.positions, [states, -1])
-      ae, _, r_ae, r_ee = vmap_features(positions, data.atoms)
+      ae, _, r_ae, r_ee = vmap_features(positions, data.atoms, ndim)
 
       # Compute potential energy
       vmap_pot = jax.vmap(potential_energy, (0, 0, None, None))
@@ -442,7 +448,9 @@ def local_energy(
                                 complex_output=complex_output,
                                 laplacian_method=laplacian_method)
       ae, _, r_ae, r_ee = networks.construct_input_features(
-          data.positions, data.atoms
+          data.positions,
+          data.atoms,
+          ndim,
       )
       potential = (potential_energy(r_ae, r_ee, data.atoms, effective_charges) +
                    pp_local(r_ae) +
