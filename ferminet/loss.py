@@ -279,7 +279,7 @@ def make_loss(network: networks.LogFermiNetLike,
       grad_norms = grad_norms.grad_norms
       grad_norms_mean = constants.pmean(jnp.mean(grad_norms))
       grad_var = constants.pmean(jnp.mean(jnp.abs(grad_norms-grad_norms_mean)))
-      grad_clipping_mask = jax.lax.stop_gradient(jnp.clip((grad_norms_mean + ps_clipping_multiplier*grad_var)/(grad_norms+1e-6), max = 1))
+      grad_clipping_mask = jax.lax.stop_gradient(jnp.clip((grad_norms_mean + use_ps_clipping*grad_var)/(grad_norms+1e-6), max = 1))
       grad_clipping_mask = jax.lax.cond(jnp.any(jnp.isnan(grad_clipping_mask)),
                                         lambda _: jnp.ones_like(grad_clipping_mask),
                                         lambda _: grad_clipping_mask,
